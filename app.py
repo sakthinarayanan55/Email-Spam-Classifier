@@ -5,15 +5,15 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.predictor import SpamPredictor
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates")
+)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024   # 1 MB request limit
 
-# Train automatically on first start if no model exists (handy for hosting)
-if not os.path.exists(os.path.join("models", "best_model.joblib")):
-    import train
-    train.main()
-
-predictor = SpamPredictor()
+predictor = SpamPredictor(model_dir=os.path.join(BASE_DIR, "models"))
 
 
 @app.route("/")
@@ -38,7 +38,7 @@ def metrics():
 
 @app.route("/reports/<path:filename>")
 def reports(filename):
-    return send_from_directory("reports", filename)
+    return send_from_directory(os.path.join(BASE_DIR, "reports"), filename)
 
 
 @app.route("/health")
