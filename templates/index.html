@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Spam Classifier</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+          --spam:#dc2626; --ham:#16a34a; --accent:#4f46e5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f172a; --card:#1e293b; --text:#e5e7eb; --muted:#94a3b8; --border:#334155; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--text); }
+  .wrap { max-width:860px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { margin:8px 0 4px; font-size:1.8rem; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px;
+          padding:20px; margin-bottom:20px; }
+  textarea { width:100%; min-height:150px; padding:12px; border-radius:10px; resize:vertical;
+             border:1px solid var(--border); background:var(--bg); color:var(--text);
+             font:inherit; }
+  textarea:focus { outline:2px solid var(--accent); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+  button { border:0; border-radius:8px; padding:10px 18px; font:inherit; cursor:pointer; }
+  .primary { background:var(--accent); color:#fff; font-weight:600; }
+  .ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
+  .primary:disabled { opacity:.6; cursor:wait; }
+  #result { display:none; }
+  .badge { display:inline-block; padding:6px 16px; border-radius:999px; color:#fff;
+           font-weight:700; letter-spacing:.5px; }
+  .badge.spam { background:var(--spam); } .badge.ham { background:var(--ham); }
+  .bar { height:10px; background:var(--border); border-radius:99px; overflow:hidden; margin:12px 0 4px; }
+  .bar > div { height:100%; background:var(--spam); transition:width .4s; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { padding:3px 10px; border-radius:999px; font-size:.85rem; }
+  .chip.s { background:#fee2e2; color:#991b1b; } .chip.h { background:#dcfce7; color:#166534; }
+  h3 { margin:18px 0 4px; font-size:1rem; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--border); }
+  .muted { color:var(--muted); font-size:.9rem; }
+  img { max-width:100%; border-radius:10px; border:1px solid var(--border); background:#fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📧 Email Spam Classifier</h1>
+  <p class="sub">Paste an email or SMS message. The ML model (TF-IDF + {{ metrics.best_model }}) tells you if it is spam or ham.</p>
+
+  <div class="card">
+    <textarea id="text" placeholder="Paste your email / message here..."></textarea>
+    <div class="row">
+      <button class="primary" id="btn" onclick="classify()">Classify</button>
+      <button class="ghost" onclick="sample('spam')">Try spam example</button>
+      <button class="ghost" onclick="sample('ham')">Try ham example</button>
+    </div>
+    <div id="result">
+      <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+      <span class="badge" id="badge"></span>
+      <span class="muted" id="conf" style="margin-left:10px"></span>
+      <div class="bar"><div id="fill"></div></div>
+      <div class="muted" id="prob"></div>
+      <h3>🔴 Spam-indicating keywords</h3><div class="chips" id="spamKw"></div>
+      <h3>🟢 Legitimate-indicating keywords</h3><div class="chips" id="hamKw"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Model performance (held-out test set)</h3>
+    <table>
+      <tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>False-positive rate</th></tr>
+      {% for name, m in metrics.results.items() %}
+      <tr {% if name == metrics.best_model %}style="font-weight:700"{% endif %}>
+        <td>{{ name }}{% if name == metrics.best_model %} ★{% endif %}</td>
+        <td>{{ '%.2f'|format(m.accuracy*100) }}%</td>
+        <td>{{ '%.2f'|format(m.precision*100) }}%</td>
+        <td>{{ '%.2f'|format(m.recall*100) }}%</td>
+        <td>{{ '%.2f'|format(m.f1*100) }}%</td>
+        <td>{{ '%.2f'|format(m.false_positive_rate*100) }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Most important spam keywords</h3>
+    <img src="/reports/top_keywords.png" alt="Top keywords">
+    <p class="muted">Learned from the Logistic Regression weights on the training data.</p>
+  </div>
+</div>
+
+<script>
+const SAMPLES = {
+  spam: "WINNER!! As a valued network customer you have been selected to receive a £900 prize reward! To claim call 09061701461. Claim code KL341. Valid 12 hours only.",
+  ham:  "Hey, are we still meeting for lunch tomorrow? Let me know what time works for you."
+};
+function sample(k){ document.getElementById('text').value = SAMPLES[k]; classify(); }
+
+function chips(id, arr, cls){
+  const el = document.getElementById(id);
+  el.innerHTML = arr.length ? arr.map(k => `<span class="chip ${cls}">${k.word}</span>`).join('')
+                            : '<span class="muted">none</span>';
+}
+
+async function classify(){
+  const text = document.getElementById('text').value.trim();
+  if(!text){ alert('Please enter a message first.'); return; }
+  const btn = document.getElementById('btn'); btn.disabled = true; btn.textContent = 'Analyzing...';
+  try{
+    const r = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'},
+                                       body: JSON.stringify({text})});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Request failed');
+    const b = document.getElementById('badge');
+    b.textContent = d.label.toUpperCase(); b.className = 'badge ' + d.label;
+    document.getElementById('conf').textContent = 'Confidence: ' + (d.confidence*100).toFixed(1) + '%';
+    document.getElementById('fill').style.width = (d.spam_probability*100) + '%';
+    document.getElementById('prob').textContent = 'Spam probability: ' + (d.spam_probability*100).toFixed(1) + '%';
+    chips('spamKw', d.spam_keywords, 's'); chips('hamKw', d.ham_keywords, 'h');
+    document.getElementById('result').style.display = 'block';
+  }catch(e){ alert(e.message); }
+  btn.disabled = false; btn.textContent = 'Classify';
+}
+</script>
+</body>
+</html>
