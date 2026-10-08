@@ -1,4 +1,5 @@
 
+import base64
 import os
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -6,6 +7,25 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 from src.predictor import SpamPredictor
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_chart_b64():
+    for rel in [
+        os.path.join("public", "reports", "top_keywords.png"),
+        os.path.join("reports", "top_keywords.png"),
+        os.path.join("public", "top_keywords.png"),
+    ]:
+        full = os.path.join(BASE_DIR, rel)
+        if os.path.exists(full):
+            try:
+                with open(full, "rb") as f:
+                    return base64.b64encode(f.read()).decode("utf-8")
+            except Exception:
+                pass
+    return ""
+
+
+TOP_KEYWORDS_B64 = load_chart_b64()
 
 app = Flask(
     __name__,
@@ -22,7 +42,11 @@ predictor = SpamPredictor(model_dir=os.path.join(BASE_DIR, "models"))
 def index():
     if request.method == "POST":
         return predict()
-    return render_template("index.html", metrics=predictor.metrics)
+    return render_template(
+        "index.html",
+        metrics=predictor.metrics,
+        top_keywords_b64=TOP_KEYWORDS_B64
+    )
 
 
 @app.route("/predict", methods=["GET", "POST"])
@@ -48,8 +72,17 @@ def metrics():
 
 @app.route("/reports/<path:filename>")
 @app.route("/api/reports/<path:filename>")
-def reports(filename):
-    return send_from_directory(os.path.join(BASE_DIR, "reports"), filename)
+@app.route("/top_keywords.png")
+def reports(filename="top_keywords.png"):
+    for folder in [
+        os.path.join(BASE_DIR, "public", "reports"),
+        os.path.join(BASE_DIR, "public"),
+        os.path.join(BASE_DIR, "reports"),
+    ]:
+        p = os.path.join(folder, filename)
+        if os.path.exists(p):
+            return send_from_directory(folder, filename, mimetype="image/png")
+    return send_from_directory(os.path.join(BASE_DIR, "reports"), "top_keywords.png", mimetype="image/png")
 
 
 @app.route("/health")
@@ -64,10 +97,14 @@ def handle_404(e):
         return predict()
     if request.path.startswith("/api/metrics"):
         return metrics()
-    if request.path.startswith(("/reports", "/api/reports")):
-        filename = request.path.split("/")[-1]
-        return send_from_directory(os.path.join(BASE_DIR, "reports"), filename)
-    return render_template("index.html", metrics=predictor.metrics), 200
+    if "top_keywords.png" in request.path or request.path.startswith(("/reports", "/api/reports")):
+        filename = request.path.split("/")[-1] or "top_keywords.png"
+        return reports(filename)
+    return render_template(
+        "index.html",
+        metrics=predictor.metrics,
+        top_keywords_b64=TOP_KEYWORDS_B64
+    ), 200
 
 
 @app.errorhandler(405)

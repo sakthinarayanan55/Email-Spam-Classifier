@@ -85,7 +85,10 @@
 
   <div class="card">
     <h3 style="margin-top:0">Most important spam keywords</h3>
-    <img src="/reports/top_keywords.png" alt="Top keywords">
+    <img src="{% if top_keywords_b64 %}data:image/png;base64,{{ top_keywords_b64 }}{% else %}/reports/top_keywords.png{% endif %}"
+         alt="Top keywords"
+         loading="lazy"
+         onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='/reports/top_keywords.png';}">
     <p class="muted">Learned from the Logistic Regression weights on the training data.</p>
   </div>
 </div>
