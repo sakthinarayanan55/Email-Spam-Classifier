@@ -16,17 +16,21 @@ app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024   # 1 MB request limit
 predictor = SpamPredictor(model_dir=os.path.join(BASE_DIR, "models"))
 
 
-@app.route("/")
-@app.route("/api/index")
-@app.route("/api/index.py")
+@app.route("/", methods=["GET", "POST"])
+@app.route("/api/index", methods=["GET", "POST"])
+@app.route("/api/index.py", methods=["GET", "POST"])
 def index():
+    if request.method == "POST":
+        return predict()
     return render_template("index.html", metrics=predictor.metrics)
 
 
-@app.route("/predict", methods=["POST"])
-@app.route("/api/predict", methods=["POST"])
+@app.route("/predict", methods=["GET", "POST"])
+@app.route("/api/predict", methods=["GET", "POST"])
+@app.route("/api/index/predict", methods=["GET", "POST"])
+@app.route("/api/index.py/predict", methods=["GET", "POST"])
 def predict():
-    data = request.get_json(silent=True) or request.form
+    data = request.get_json(silent=True) or request.form or request.args
     text = data.get("text", "")
     try:
         return jsonify(predictor.predict(text))
@@ -37,6 +41,7 @@ def predict():
 
 
 @app.route("/api/metrics")
+@app.route("/metrics")
 def metrics():
     return jsonify(predictor.metrics)
 
@@ -55,13 +60,20 @@ def health():
 
 @app.errorhandler(404)
 def handle_404(e):
-    if request.path.startswith(("/predict", "/api")):
-        return jsonify({"error": "Not found"}), 404
+    if request.method == "POST":
+        return predict()
+    if request.path.startswith("/api/metrics"):
+        return metrics()
+    if request.path.startswith(("/reports", "/api/reports")):
+        filename = request.path.split("/")[-1]
+        return send_from_directory(os.path.join(BASE_DIR, "reports"), filename)
     return render_template("index.html", metrics=predictor.metrics), 200
 
 
 @app.errorhandler(405)
 def handle_405(e):
+    if request.method == "POST":
+        return predict()
     return jsonify({"error": "Method not allowed"}), 405
 
 
