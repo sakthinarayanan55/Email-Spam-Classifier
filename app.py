@@ -17,11 +17,14 @@ predictor = SpamPredictor(model_dir=os.path.join(BASE_DIR, "models"))
 
 
 @app.route("/")
+@app.route("/api/index")
+@app.route("/api/index.py")
 def index():
     return render_template("index.html", metrics=predictor.metrics)
 
 
 @app.route("/predict", methods=["POST"])
+@app.route("/api/predict", methods=["POST"])
 def predict():
     data = request.get_json(silent=True) or request.form
     text = data.get("text", "")
@@ -37,11 +40,13 @@ def metrics():
 
 
 @app.route("/reports/<path:filename>")
+@app.route("/api/reports/<path:filename>")
 def reports(filename):
     return send_from_directory(os.path.join(BASE_DIR, "reports"), filename)
 
 
 @app.route("/health")
+@app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
 
