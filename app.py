@@ -32,6 +32,8 @@ def predict():
         return jsonify(predictor.predict(text))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Prediction error: {str(e)}"}), 500
 
 
 @app.route("/api/metrics")
@@ -49,6 +51,23 @@ def reports(filename):
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith(("/predict", "/api")):
+        return jsonify({"error": "Not found"}), 404
+    return render_template("index.html", metrics=predictor.metrics), 200
+
+
+@app.errorhandler(405)
+def handle_405(e):
+    return jsonify({"error": "Method not allowed"}), 405
+
+
+@app.errorhandler(500)
+def handle_500(e):
+    return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == "__main__":

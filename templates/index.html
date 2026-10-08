@@ -110,7 +110,12 @@ async function classify(){
   try{
     const r = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'},
                                        body: JSON.stringify({text})});
-    const d = await r.json();
+    let d;
+    try {
+      d = await r.json();
+    } catch {
+      throw new Error(`Server returned unexpected format (${r.status} ${r.statusText})`);
+    }
     if(!r.ok) throw new Error(d.error || 'Request failed');
     const b = document.getElementById('badge');
     b.textContent = d.label.toUpperCase(); b.className = 'badge ' + d.label;
